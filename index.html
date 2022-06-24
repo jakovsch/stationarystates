@@ -1,0 +1,17 @@
+<html>
+  <head>
+    <meta content="text/html;charset=utf-8" http-equiv="Content-Type"/>
+  </head>
+  <body>
+    <!--script src="https://polyfill.io/v3/polyfill.min.js?version=3.111.0&features=TextDecoder%2CTextEncoder&flags=gated"></script-->
+    <script type="module">
+      import { simd } from "https://unpkg.com/wasm-feature-detect?module";
+      import init from "./pkg/vizualizatorbitala.js";
+      async function run() {
+        await init();
+      }
+      run();
+    </script>
+    <canvas id="gl_canvas" width="1280" height="720"></canvas>
+  </body>
+</html>

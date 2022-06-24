@@ -1,0 +1,56 @@
+[package]
+name = "vizualizatorbitala"
+description = ""
+readme = "README.md"
+version = "0.1.0"
+authors = ["jakovsch"]
+repository = ""
+license = "Unlicense"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib"]
+
+[features]
+default = ["console_error_panic_hook"]
+
+[profile.release]
+opt-level = 3
+lto = true
+
+[dependencies]
+# Web/Wasm
+wasm-bindgen = "0.2"
+js-sys = "0.3"
+gloo-events = "0.1"
+gloo-render = "0.1"
+# Numeric
+num = "0.4"
+nalgebra = "0.31"
+bacon-sci = "0.13"
+trackball = "0.9"
+rand = { version = "0.8", features = ["small_rng"] }
+getrandom = { version = "0.2", features = ["js"] }
+# Optional
+console_error_panic_hook = { version = "0.1", optional = true }
+wee_alloc = { version = "0.4", optional = true }
+
+[dependencies.web-sys]
+version = "0.3"
+features = [
+  'Window',
+  'Document',
+  'Element',
+  'HtmlCanvasElement',
+  'WebGl2RenderingContext',
+  'WebGlContextAttributes',
+  'WebGlPowerPreference',
+  'WebGlVertexArrayObject',
+  'WebGlUniformLocation',
+  'WebGlBuffer',
+  'WebGlShader',
+  'WebGlProgram',
+  'Event',
+  'MouseEvent',
+  'EventTarget',
+]

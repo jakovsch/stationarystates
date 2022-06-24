@@ -1,0 +1,6 @@
+[build]
+target = "wasm32-unknown-unknown"
+# Extensions: SIMD
+#rustflags = "-Ctarget-feature=+simd128"
+# Extensions: atomics, bulk memory, SIMD
+#rustflags = "-Ctarget-feature=+atomics,+bulk-memory,+simd128"
