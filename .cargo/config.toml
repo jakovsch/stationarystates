@@ -1,6 +1,9 @@
 [build]
 target = "wasm32-unknown-unknown"
-# Extensions: SIMD
-#rustflags = "-Ctarget-feature=+simd128"
-# Extensions: atomics, bulk memory, SIMD
-#rustflags = "-Ctarget-feature=+atomics,+bulk-memory,+simd128"
+# https://nalgebra.org/docs/faq/
+incremental = false
+rustflags = [
+    # https://docs.rs/rustc-ap-rustc_target/437.0.0/src/rustc_target/spec/wasm32_base.rs.html#21
+    "-Clink-args=--stack-first --gc-sections -z stack-size=2097152",
+    #"-Ctarget-feature=+atomics,+bulk-memory,+simd128",
+]
