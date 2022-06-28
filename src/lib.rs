@@ -17,14 +17,16 @@ struct RenderState {
     canvas: web_sys::HtmlCanvasElement,
     u_proj: web_sys::WebGlUniformLocation,
     u_view: web_sys::WebGlUniformLocation,
+    u_view_inv: web_sys::WebGlUniformLocation,
+    u_scale: web_sys::WebGlUniformLocation,
     proj: Matrix4::<f32>,
     view: Matrix4::<f32>,
     orbit: Orbit::<f32>,
     orbiting: bool,
     vao: web_sys::WebGlVertexArrayObject,
-    mat_buf_dst: web_sys::WebGlBuffer,
-    mat_buf_src: &'static[f32],
-    matrices: [SMatrixSliceMut4; num_inst],
+    //ins_buf_dst: web_sys::WebGlBuffer,
+    //ins_buf_src: &'static[f32],
+    //instances: [SVectorSliceMut3; num_inst],
 }
 
 #[wasm_bindgen(start)]
@@ -70,7 +72,6 @@ pub fn main() -> Result<(), JsValue> {
     let program = gl_link_program(&context, &vert_shader, &frag_shader)?;
     context.use_program(Some(&program));
 
-    let ident = Matrix4::<f32>::identity();
     let camera = Point3::<f32>::new(30.0, 0.0, 0.0);
     let target = Point3::<f32>::new(0.0, 0.0, 0.0);
     let aspect = canvas.client_width() as f32 / canvas.client_height() as f32;
@@ -85,8 +86,12 @@ pub fn main() -> Result<(), JsValue> {
         .ok_or("err: uniform_location")?;
     let u_view = context.get_uniform_location(&program, "u_view")
         .ok_or("err: uniform_location")?;
+    let u_view_inv = context.get_uniform_location(&program, "u_view_inv")
+        .ok_or("err: uniform_location")?;
+    let u_scale = context.get_uniform_location(&program, "u_scale")
+        .ok_or("err: uniform_location")?;
 
-    let i_model = context.get_attrib_location(&program, "i_model");
+    let i_pos = context.get_attrib_location(&program, "i_pos");
     let a_pos = context.get_attrib_location(&program, "a_pos");
     let a_normal = context.get_attrib_location(&program, "a_normal");
 
@@ -120,39 +125,61 @@ pub fn main() -> Result<(), JsValue> {
     context.vertex_attrib_pointer_with_i32(
         a_normal as u32, 3, Gl::FLOAT, false, 0, 0);
 
-    static mut mat_buf_src: [f32; num_inst*16*4] = [0.0; num_inst*16*4];
-    let mut matrices = {
-        let mut arr: [
-            mem::MaybeUninit<SMatrixSliceMut4>; num_inst
-        ] = unsafe { mem::MaybeUninit::uninit().assume_init() };
+    let mut ins_buf_src = Vec::<f32>::with_capacity(num_inst*VEC3_SZ);
+    let mut instances = Vec::<SVectorSliceMut3>::with_capacity(num_inst);
+    unsafe {
+        ins_buf_src.set_len(ins_buf_src.capacity());
+        instances.set_len(instances.capacity());
+        ins_buf_src.fill(0.0);
         for i in 0..num_inst {
-            let off = i*16*4;
-            unsafe {
-                let ptr = mat_buf_src.as_mut_ptr();
-                let slice = slice::from_raw_parts_mut(ptr.add(off), 16*4);
-                arr[i].write(SMatrixSliceMut4::from_slice(slice));
+            let off = i*VEC3_SZ;
+            let ptr = ins_buf_src.as_mut_ptr();
+            let slice = slice::from_raw_parts_mut(ptr.add(off), VEC3_SZ);
+            instances[i] = SVectorSliceMut3::from_slice(slice);
+        }
+    }
+
+    let mut rng = SmallRng::seed_from_u64(123);
+    let dist = Uniform::<f64>::from(-10.0..10.0).map(
+        |x| (x*0.32).sinh()
+    );
+    let mut r_iter = dist.sample_iter(&mut rng);
+
+    let wavefunc = Psi::new(4, 1, 0);
+    let mut num_points = 0;
+    const LN: usize = 1000;
+    while num_points < num_inst {
+        let x = SVector::<f64, LN>::from_iterator(r_iter.by_ref());
+        let y = SVector::<f64, LN>::from_iterator(r_iter.by_ref());
+        let z = SVector::<f64, LN>::from_iterator(r_iter.by_ref());
+        let psi = wavefunc.eval(&x, &y, &z);
+        let max_l1 = psi.camax().powi(2);
+        for j in 0..LN {
+            if num_points == num_inst { break }
+            let pos = Vector3::<f32>::new(
+                *x.index(j) as f32, *y.index(j) as f32, *z.index(j) as f32
+            );
+            let val = (*psi.index(j)).re.powi(2);
+            if val/max_l1 >= 0.02 {
+                instances[num_points] += pos;
+                num_points += 1;
             }
         }
-        unsafe { mem::transmute::<_, [SMatrixSliceMut4; num_inst]>(arr) }
-    };
-
-    let mat_buf_dst = context.create_buffer()
-        .ok_or("err: create_buffer")?;
-    context.bind_buffer(Gl::ARRAY_BUFFER, Some(&mat_buf_dst));
-    context.buffer_data_with_i32(
-        Gl::ARRAY_BUFFER,
-        unsafe { mat_buf_src.len() as i32*4 },
-        Gl::DYNAMIC_DRAW
-    );
-
-    for i in 0..4 {
-        let off = i*16;
-        let loc = (i+i_model) as u32;
-        context.enable_vertex_attrib_array(loc);
-        context.vertex_attrib_pointer_with_i32(
-            loc, 4, Gl::FLOAT, false, 16*4, off);
-        context.vertex_attrib_divisor(loc, 1);
     }
+
+    let ins_buf_dst = context.create_buffer()
+        .ok_or("err: create_buffer")?;
+    context.bind_buffer(Gl::ARRAY_BUFFER, Some(&ins_buf_dst));
+    unsafe {
+        let ins_buf_src = js_sys::Float32Array::view(ins_buf_src.as_slice());
+        context.buffer_data_with_array_buffer_view(
+            Gl::ARRAY_BUFFER, &ins_buf_src, Gl::STATIC_DRAW);
+    }
+
+    context.enable_vertex_attrib_array(i_pos as u32);
+    context.vertex_attrib_pointer_with_i32(
+        i_pos as u32, 3, Gl::FLOAT, false, 0, 0);
+    context.vertex_attrib_divisor(i_pos as u32, 1);
 
     let mouseup = EventListener::new(&document, "mouseup",
         |e: &web_sys::Event| {
@@ -190,38 +217,6 @@ pub fn main() -> Result<(), JsValue> {
         },
     );
 
-    let mut rng = SmallRng::seed_from_u64(123);
-    let dist = Uniform::<f64>::from(-10.0..10.0);
-    let mut r_iter = dist.sample_iter(&mut rng);
-
-    let wavefunc = Psi::new(4, 1, 0);
-    const l: usize = if num_inst >= 1000 { 1000 } else { num_inst };
-    const d: usize = num_inst/l;
-    const m: usize = num_inst%l;
-    for i in 0..d {
-        let x = SVector::<f64, l>::from_iterator(r_iter.by_ref());
-        let y = SVector::<f64, l>::from_iterator(r_iter.by_ref());
-        let z = SVector::<f64, l>::from_iterator(r_iter.by_ref());
-        let psi = wavefunc.eval(&x, &y, &z);
-        let max_l1 = psi.camax().powi(2);
-        for j in 0..l {
-            let pos = Vector3::<f32>::new(
-                *x.index(j) as f32, *y.index(j) as f32, *z.index(j) as f32
-            );
-            let val = (*psi.index(j)).re.powi(2);
-            if val/max_l1 >= 0.02 {
-                matrices[j+i*l].add_assign(&ident);
-                matrices[j+i*l].append_scaling_mut(0.15);
-                matrices[j+i*l].append_translation_mut(&pos);
-            }
-        }
-    }
-    context.bind_buffer(Gl::ARRAY_BUFFER, Some(&mat_buf_dst));
-    unsafe {
-        let _mat_buf_src = js_sys::Float32Array::view(&mat_buf_src);
-        context.buffer_sub_data_with_i32_and_array_buffer_view(
-            Gl::ARRAY_BUFFER, 0, &_mat_buf_src);
-    }
     unsafe {
         STATE = Some(RenderState {
             _frame: request_animation_frame(render),
@@ -230,11 +225,10 @@ pub fn main() -> Result<(), JsValue> {
             _e_mousemove: mousemove,
             time: 0.0, n_vert,
             context, canvas,
-            u_proj, u_view, proj, view,
+            u_proj, u_view, u_view_inv, u_scale,
+            proj, view,
             orbit, orbiting: false,
-            vao, mat_buf_dst,
-            mat_buf_src: &mat_buf_src,
-            matrices,
+            vao,
         });
     }
 
@@ -249,14 +243,15 @@ fn render(mut time: f64) {
     let dt = time-s.time;
     s.time = time;
 
-    //let rot = 0.5*dt as f32;
-    //s.model.append_rotation_mut(
-    //    &UnitQuaternion::<f32>::from_axis_angle(&Vector3::y_axis(), rot));
+    let view_inv = s.view.try_inverse().unwrap_or_default();
 
+    context.uniform1f(Some(&s.u_scale), 0.15);
     context.uniform_matrix4fv_with_f32_array(
         Some(&s.u_proj), false, s.proj.as_slice());
     context.uniform_matrix4fv_with_f32_array(
         Some(&s.u_view), false, s.view.as_slice());
+    context.uniform_matrix4fv_with_f32_array(
+        Some(&s.u_view_inv), false, view_inv.as_slice());
 
     context.viewport(
         0, 0,
@@ -269,14 +264,7 @@ fn render(mut time: f64) {
     context.clear_depth(1.0);
     context.clear(Gl::COLOR_BUFFER_BIT | Gl::DEPTH_BUFFER_BIT);
     context.bind_vertex_array(Some(&s.vao));
-    // context.bind_buffer(Gl::ARRAY_BUFFER, Some(&s.mat_buf_dst));
-    // unsafe {
-    //     let mat_buf_src = js_sys::Float32Array::view(s.mat_buf_src);
-    //     context.buffer_sub_data_with_i32_and_array_buffer_view(
-    //         Gl::ARRAY_BUFFER, 0, &mat_buf_src);
-    // }
     context.draw_arrays_instanced(Gl::TRIANGLES, 0, s.n_vert, num_inst as i32);
-    //context.draw_arrays(Gl::TRIANGLES, 0, (vertices.len()/3) as i32);
 
     s._frame = request_animation_frame(render);
 }

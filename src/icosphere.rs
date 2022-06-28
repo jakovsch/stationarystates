@@ -123,5 +123,6 @@ fn subdivide(
         nindices.push([idx[2], mid[2], mid[1]]);
         nindices.push([mid[0], mid[1], mid[2]]);
     }
+
     (vertices, nindices)
 }
