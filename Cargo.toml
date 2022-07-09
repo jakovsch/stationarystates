@@ -15,6 +15,7 @@ crate-type = ["cdylib"]
 default = ["console_error_panic_hook"]
 
 [profile.release]
+panic = "abort"
 opt-level = 3
 lto = true
 
@@ -31,7 +32,8 @@ bacon-sci = "0.13"
 trackball = "0.9"
 rand = { version = "0.8", features = ["small_rng"] }
 getrandom = { version = "0.2", features = ["js"] }
-# Optional
+# Misc
+rustc-hash = "1.1"
 console_error_panic_hook = { version = "0.1", optional = true }
 wee_alloc = { version = "0.4", optional = true }
 
@@ -47,9 +49,12 @@ features = [
   'WebGlPowerPreference',
   'WebGlVertexArrayObject',
   'WebGlUniformLocation',
-  'WebGlBuffer',
   'WebGlShader',
   'WebGlProgram',
+  'WebGlBuffer',
+  'WebGlFramebuffer',
+  'WebGlRenderbuffer',
+  'WebGlTexture',
   'Event',
   'MouseEvent',
   'EventTarget',

@@ -1,5 +1,5 @@
 use nalgebra::Vector3;
-use std::collections::HashMap;
+use rustc_hash::FxHashMap;
 
 type Vert = [f32; 3];
 type Index = [usize; 3];
@@ -95,7 +95,7 @@ fn subdivide(
     mut vertices: Vec<Vert>,
     indices: Vec<Index>,
 ) -> (Vec<Vert>, Vec<Index>) {
-    let mut cache = HashMap::<(usize, usize), usize>::default();
+    let mut cache = FxHashMap::<(usize, usize), usize>::default();
     let mut nindices = Vec::<Index>::default();
     for idx in &indices {
         let mut mid: Index = [0; 3];

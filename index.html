@@ -3,15 +3,36 @@
     <meta content="text/html;charset=utf-8" http-equiv="Content-Type"/>
   </head>
   <body>
+    <style>
+      body {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        padding: 0;
+        overflow: hidden;
+        user-select: none;
+      }
+      canvas {
+        image-rendering: auto;
+      }
+    </style>
     <!--script src="https://polyfill.io/v3/polyfill.min.js?version=3.111.0&features=TextDecoder%2CTextEncoder&flags=gated"></script-->
     <script type="module">
       import { simd } from "https://unpkg.com/wasm-feature-detect?module";
       import init from "./pkg/vizualizatorbitala.js";
       async function run() {
+        let width = window.innerWidth;
+        let height = window.innerHeight;
+        let ratio = window.devicePixelRatio || 1.0;
+        let canvas = document.getElementById("gl_canvas");
+        canvas.width = width * ratio;
+        canvas.height = height * ratio;
+        canvas.style.width = width + "px";
+        canvas.style.height = height + "px";
         await init();
       }
       run();
     </script>
-    <canvas id="gl_canvas" width="1280" height="720"></canvas>
+    <canvas id="gl_canvas"></canvas>
   </body>
 </html>
