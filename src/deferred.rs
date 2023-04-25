@@ -7,6 +7,7 @@ use web_sys::{
     WebGlUniformLocation,
     WebGlFramebuffer,
     WebGlTexture,
+    WebGlBuffer,
 };
 
 type Gl = WebGl2RenderingContext;
@@ -14,8 +15,8 @@ type Gl = WebGl2RenderingContext;
 pub struct RenderPass {
     pub context: Gl,
     pub shader: WebGlProgram,
-    pub fbo: WebGlFramebuffer,
-    pub vao: WebGlVertexArrayObject,
+    pub fbos: Vec<WebGlFramebuffer>,
+    pub vaos: Vec<WebGlVertexArrayObject>,
     pub uniforms: FxHashMap<&'static str, WebGlUniformLocation>,
     pub attributes: FxHashMap<&'static str, u32>,
     pub draw_buffers: FxHashMap<&'static str, u32>,
@@ -24,45 +25,97 @@ pub struct RenderPass {
 impl RenderPass {
     pub fn new(
         context: Gl,
+        n_fbos: usize,
+        n_vaos: usize,
         vert_src: &str,
         frag_src: &str,
-        uniform_vars: &[&'static str],
-        attribute_vars: &[&'static str],
-        draw_buf_vars: &[&'static str],
+        uniform_vars: Option<&[&'static str]>,
+        attribute_vars: Option<&[&'static str]>,
+        draw_buf_vars: Option<&[&'static str]>,
+        xfb_varyings: Option<&[&'static str]>,
     ) -> Self {
         let vert = gl_compile_shader(&context, Gl::VERTEX_SHADER, vert_src);
         let frag = gl_compile_shader(&context, Gl::FRAGMENT_SHADER, frag_src);
-        let shader = gl_link_program(&context, &vert, &frag);
-        let fbo = context
-            .create_framebuffer()
-            .expect_throw("err: create_framebuffer");
-        let vao = context
-            .create_vertex_array()
-            .expect_throw("err: create_vertex_array");
-        let uniforms = FxHashMap::from_iter(
-            uniform_vars.into_iter().map(
-                |i| (*i, context.get_uniform_location(&shader, *i)
-                                .expect_throw("err: uniform_location"))
-            )
-        );
-        let attributes = FxHashMap::from_iter(
-            attribute_vars.into_iter().map(
-                |i| (*i, context.get_attrib_location(&shader, *i) as u32)
-            )
-        );
-        let draw_buffers = FxHashMap::from_iter(
-            draw_buf_vars.into_iter().map(
-                |i| (*i, context.get_frag_data_location(&shader, *i) as u32)
-            )
-        );
+        let shader = gl_link_program(&context, &vert, &frag, xfb_varyings);
+        let fbos = (0..n_fbos).map(|_|
+            context.create_framebuffer()
+                .expect_throw("err: create_framebuffer"))
+            .collect();
+        let vaos = (0..n_vaos).map(|_|
+            context.create_vertex_array()
+                .expect_throw("err: create_vertex_array"))
+            .collect();
+        let uniforms = match uniform_vars {
+            Some(vars) => FxHashMap::from_iter(vars.into_iter().map(
+                    |i| (*i, context.get_uniform_location(&shader, *i)
+                                    .expect_throw("err: uniform_location"))
+                )),
+            None => FxHashMap::default(),
+        };
+        let attributes = match attribute_vars {
+            Some(vars) => FxHashMap::from_iter(vars.into_iter().map(
+                    |i| (*i, context.get_attrib_location(&shader, *i) as u32)
+                )),
+            None => FxHashMap::default(),
+        };
+        let draw_buffers = match draw_buf_vars {
+            Some(vars) => FxHashMap::from_iter(vars.into_iter().map(
+                    |i| (*i, context.get_frag_data_location(&shader, *i) as u32)
+                )),
+            None => FxHashMap::default(),
+        };
 
-        Self {context, shader, fbo, vao, uniforms, attributes, draw_buffers}
+        Self {context, shader, fbos, vaos, uniforms, attributes, draw_buffers}
     }
 
-    pub fn attrib_buffer(
+    pub fn buffer_alloc(
         &self,
+        size: i32,
+        hint: u32,
+    ) -> WebGlBuffer {
+        let context = &self.context;
+
+        let buffer = context
+            .create_buffer()
+            .expect_throw("err: create_buffer");
+        context.bind_buffer(Gl::ARRAY_BUFFER, Some(&buffer));
+        context.buffer_data_with_i32(
+            Gl::ARRAY_BUFFER, size, hint,
+        );
+        context.bind_buffer(Gl::ARRAY_BUFFER, None);
+
+        buffer
+    }
+
+    pub fn buffer_data(
+        &self,
+        data: &[f32],
+        hint: u32,
+    ) -> WebGlBuffer {
+        let context = &self.context;
+
+        let buffer = context
+            .create_buffer()
+            .expect_throw("err: create_buffer");
+        context.bind_buffer(Gl::ARRAY_BUFFER, Some(&buffer));
+
+        unsafe {
+            let view = js_sys::Float32Array::view(data);
+            context.buffer_data_with_array_buffer_view(
+                Gl::ARRAY_BUFFER, &view, hint,
+            );
+        }
+
+        context.bind_buffer(Gl::ARRAY_BUFFER, None);
+
+        buffer
+    }
+
+    pub fn vao_buffer(
+        &self,
+        vao: usize,
+        buffer: &WebGlBuffer,
         attribute_var: &str,
-        buf_src: &[f32],
         size: i32,
         stride: i32,
         offset: i32,
@@ -71,17 +124,8 @@ impl RenderPass {
     ) {
         let context = &self.context;
 
-        context.bind_vertex_array(Some(&self.vao));
-        let buf_dst = context
-            .create_buffer()
-            .expect_throw("err: create_buffer");
-        context.bind_buffer(Gl::ARRAY_BUFFER, Some(&buf_dst));
-
-        unsafe {
-            let buf_view = js_sys::Float32Array::view(buf_src);
-            context.buffer_data_with_array_buffer_view(
-                Gl::ARRAY_BUFFER, &buf_view, Gl::STATIC_DRAW);
-        }
+        context.bind_vertex_array(self.vaos.get(vao));
+        context.bind_buffer(Gl::ARRAY_BUFFER, Some(buffer));
 
         let attrib = *self.attributes
             .get(attribute_var)
@@ -99,13 +143,14 @@ impl RenderPass {
 
     pub fn fb_renderbuffer(
         &self,
+        fbo: usize,
         samples: i32,
         format: u32,
         attachment: u32,
     ) {
         let context = &self.context;
 
-        context.bind_framebuffer(Gl::FRAMEBUFFER, Some(&self.fbo));
+        context.bind_framebuffer(Gl::FRAMEBUFFER, self.fbos.get(fbo));
         let rbo = context
             .create_renderbuffer()
             .expect_throw("err: create_renderbuffer");
@@ -131,13 +176,14 @@ impl RenderPass {
 
     pub fn fb_texture(
         &self,
+        fbo: usize,
         unit: u32,
         format: u32,
         attachment: u32,
     ) -> WebGlTexture {
         let context = &self.context;
 
-        context.bind_framebuffer(Gl::FRAMEBUFFER, Some(&self.fbo));
+        context.bind_framebuffer(Gl::FRAMEBUFFER, self.fbos.get(fbo));
         let tex = context
             .create_texture()
             .expect_throw("err: create_texture");
@@ -214,9 +260,10 @@ impl RenderPass {
 
     pub fn set_draw_buffers(
         &self,
+        fbo: usize,
         vars: &[u32],
     ) {
-        self.context.bind_framebuffer(Gl::FRAMEBUFFER, Some(&self.fbo));
+        self.context.bind_framebuffer(Gl::FRAMEBUFFER, self.fbos.get(fbo));
 
         let len = self.draw_buffers.values().len();
         let args = js_sys::Array::new_with_length(len as u32);
@@ -228,10 +275,14 @@ impl RenderPass {
         self.context.bind_framebuffer(Gl::FRAMEBUFFER, None);
     }
 
-    pub fn active(&self) {
+    pub fn active(
+        &self,
+        fbo: usize,
+        vao: usize,
+    ) {
         self.context.use_program(Some(&self.shader));
-        self.context.bind_framebuffer(Gl::FRAMEBUFFER, Some(&self.fbo));
-        self.context.bind_vertex_array(Some(&self.vao));
+        self.context.bind_framebuffer(Gl::FRAMEBUFFER, self.fbos.get(fbo));
+        self.context.bind_vertex_array(self.vaos.get(vao));
     }
 }
 
@@ -242,7 +293,7 @@ fn gl_compile_shader(
 ) -> WebGlShader {
     let shader = context
         .create_shader(shader_type)
-        .expect_throw("err: gl_compile: failed"); 
+        .expect_throw("err: gl_compile: failed");
 
     context.shader_source(&shader, source);
     context.compile_shader(&shader);
@@ -261,6 +312,7 @@ fn gl_link_program(
     context: &Gl,
     vert_shader: &WebGlShader,
     frag_shader: &WebGlShader,
+    xfb_varyings: Option<&[&'static str]>,
 ) -> WebGlProgram {
     let program = context
         .create_program()
@@ -268,6 +320,16 @@ fn gl_link_program(
 
     context.attach_shader(&program, vert_shader);
     context.attach_shader(&program, frag_shader);
+    if let Some(vars) = xfb_varyings {
+        let len = vars.len();
+        let args = js_sys::Array::new_with_length(len as u32);
+        for i in 0..len {
+            args.set(i as u32, vars[i].into());
+        }
+        context.transform_feedback_varyings(
+            &program, &args.into(), Gl::SEPARATE_ATTRIBS,
+        );
+    }
     context.link_program(&program);
 
     context

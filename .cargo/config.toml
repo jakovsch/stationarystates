@@ -2,8 +2,15 @@
 target = "wasm32-unknown-unknown"
 # https://nalgebra.org/docs/faq/
 incremental = false
+
+[target.wasm32-unknown-unknown]
 rustflags = [
     # https://docs.rs/rustc-ap-rustc_target/437.0.0/src/rustc_target/spec/wasm32_base.rs.html#21
     "-Clink-args=--stack-first --gc-sections -z stack-size=2097152",
-    #"-Ctarget-feature=+atomics,+bulk-memory,+simd128",
+    #"-Ctarget-feature=+atomics,+bulk-memory",
+]
+
+[target."cfg(feature = 'simd128')"]
+rustflags = [
+    "-Ctarget-feature=+simd128",
 ]
