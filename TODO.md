@@ -1,35 +1,60 @@
-# Things to do
-
 ## Performance
 
 - [] buffers
-  - [x] instance attribs: use vec3 instead of mat4
-  - [x] scale factor (radius) as uniform
-  - [] normal buffer: use packed ints instead of floats
+  - [x] per instance attributes: use vec3 instead of mat4
+  - [x] per instance radius as uniform
+  - [] normals: use packed int format instead of float32
   - [] interleave vertex/normals?
   - [] dynamic_draw vs stream_draw
 - [] minimal camera far field
-- [x] minimize inversions/transpositions in shaders
+- [x] no inverse/transpose in shaders
 - [] CPU-side optimizations
   - [x] vget_unchecked
-  - [] emit-asm, codegen-units
+  - [x] codegen-units
+  - [x] wasm-opt level
   - [] simd
-  - [] threads?
+    - [x] cargo/rustc feature simd128
+    - [] separate builds (build.rs)
+    - [] runtime detection
+  - [] threads/ServiceWorkers?
 - [x] canvas devicePixelRatio (high-dpi)
 
 ## Features
 
 - [] wavefunction sampling
-  - [x] dynamic sample count (switch to heap array)
-  - [x] distribution that samples around origin more often
-  - [] accelerating interpolation func. instead of tanh()
-  - [] sampling regions OR integrate density -> distribution
-  - [] derive color, sample and camera parameters from n,l,m
+  - [x] heap alloc for large arrays (use Vec, DVector)
+  - [x] dynamic sample count
+  - [] adaptive sampling
+    - [] dynamic region size
+    - [] multiple regions/non-uniform distribution (1D density bias?)
+    - [] per-region sample quotas
+    - [] exploit symmetry (e.g. mirror, rotate regions)
+    - [] derive from n,l,m
 - [] occlusion and deferred rendering
   - [x] render-to-texture, blending
   - [x] viewspace position from normals
+  - [] low-performance mode (billboard 2D sphere texture instead of mesh)
+  - [] clipping plane (interior view)
+  - [] GL fixed-function blend instead of shader?
   - [] fix MSAA
   - [] actual SSAO impl.
-- [] simulate electron trajectories (Bohm guiding eq./probability current)
-- [] visualize complex phase?
+- [] simulate particle trajectories (pilot wave/probability current)
+  - [x] transform feedback pass
+  - [x] double buffer
+  - [] wavefunction in the shader
+  - [] guiding equation in the shader
+  - [] autodifferentiation via dual-complex numbers (impl. add, mul, div, exp, pow)
+    - [] simultaneous partial derivatives possible?
+- [] visualize complex phase or sign?
 - [] website UI and controls
+  - [] fix mouse orbiting
+  - [] derive color and camera parameters from n,l,m
+  - [] controls: number of instances (particles)
+  - [] controls: instance radius and sphere radius
+  - [] controls: wavefunction parameters (n,l,m)
+  - [] controls: sampling parameters (threshold/rejection+bias)
+  - [] controls: on/off (SSAO, trajectory simulation)
+  - [] controls: rendering parameters (icosphere detail or billboarded)
+- [] fix window resize (reset GL, realloc render textures)
+- [] use bundler for final packaging
+- [] glsl-optimizer or similar for include_shader macro

@@ -10,7 +10,7 @@ pub use trackball::Orbit;
 pub use rand::{Rng, SeedableRng};
 pub use rand::distributions::{Distribution, Uniform};
 pub use rand::rngs::SmallRng;
-pub use std::{slice, ops::AddAssign};
+pub use std::{mem, slice, ops::AddAssign};
 
 pub type Gl = WebGl2RenderingContext;
 pub type SVectorSliceMut3 = VectorSliceMut3<'static, f32>;
